@@ -1,0 +1,155 @@
+<div id="wallet-checker">
+  <h2>🪙 GODS Allocation Checker</h2>
+  <div id="wallets"></div>
+  <button id="addWalletBtn">Add Wallet</button>
+  <h3 id="totalTokens">Total Tokens: 0</h3>
+  <button id="toggleDetails" style="display:none;">Show Details</button>
+  <div id="details" style="display:none;"></div>
+</div>
+
+<style>
+  #wallet-checker {
+    font-family: sans-serif;
+    background: #111;
+    color: #E7BB67;
+    padding: 20px;
+    border-radius: 12px;
+    max-width: 700px;
+    margin: 30px auto;
+    box-shadow: 0 0 12px #000;
+  }
+
+  input[type="text"] {
+    padding: 8px;
+    width: 90%;
+    max-width: 400px;
+    margin-top: 10px;
+    margin-bottom: 5px;
+    border-radius: 6px;
+    border: none;
+  }
+
+  button {
+    margin: 10px 5px 20px 0;
+    padding: 8px 12px;
+    background: #E7BB67;
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  code {
+    background: #222;
+    padding: 2px 5px;
+    border-radius: 4px;
+    display: inline-block;
+    margin: 1px 0;
+  }
+
+  #details {
+    background: #1a1a1a;
+    padding: 10px;
+    border-radius: 8px;
+  }
+
+  #wallet-checker div {
+    margin-bottom: 10px;
+  }
+</style>
+
+<script>
+  const tokenDataUrl = 'https://raw.githubusercontent.com/Valarian21/BRC2.0GODS/refs/heads/main/godtokens';
+  let tokenMap = new Map();
+  let walletCount = 0;
+  let showDetails = false;
+
+  async function fetchTokenData() {
+    const res = await fetch(tokenDataUrl);
+    const json = await res.json();
+    for (const item of json) {
+      const tokenAttr = item.meta.attributes.find(a => a.trait_type === "BRC-2.0Token");
+      if (tokenAttr) {
+        tokenMap.set(item.id, parseInt(tokenAttr.value));
+      }
+    }
+  }
+
+  async function fetchInscriptions(address) {
+    const res = await fetch(`https://api.hiro.so/ordinals/v1/inscriptions?address=${address}`);
+    const data = await res.json();
+    return data.results.map(i => i.id).filter(id => tokenMap.has(id));
+  }
+
+  async function addWalletInput(defaultCreate = false) {
+    if (walletCount >= 5) return;
+    walletCount++;
+
+    const container = document.getElementById('wallets');
+    const wrapper = document.createElement('div');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = `Wallet ${walletCount} Address`;
+    input.id = `wallet${walletCount}`;
+
+    const result = document.createElement('div');
+    result.id = `result${walletCount}`;
+
+    wrapper.appendChild(input);
+    wrapper.appendChild(result);
+    container.appendChild(wrapper);
+
+    input.addEventListener('change', async () => {
+      const address = input.value.trim();
+      const inscriptionIds = await fetchInscriptions(address);
+      const tokenSum = inscriptionIds.reduce((sum, id) => sum + (tokenMap.get(id) || 0), 0);
+      result.innerText = `Wallet ${walletCount}: ${tokenSum.toLocaleString()} Tokens`;
+      result.dataset.tokens = tokenSum;
+      result.dataset.inscriptions = JSON.stringify(inscriptionIds);
+      updateTotal();
+      document.getElementById('toggleDetails').style.display = 'inline-block';
+    });
+
+    if (defaultCreate) input.focus();
+  }
+
+  function updateTotal() {
+    let total = 0;
+    for (let i = 1; i <= walletCount; i++) {
+      const el = document.getElementById(`result${i}`);
+      if (el?.dataset?.tokens) total += parseInt(el.dataset.tokens);
+    }
+    document.getElementById('totalTokens').innerText = `Total Tokens: ${total.toLocaleString()}`;
+  }
+
+  function toggleDetails() {
+    showDetails = !showDetails;
+    const detailsDiv = document.getElementById('details');
+    if (showDetails) {
+      detailsDiv.innerHTML = '';
+      for (let i = 1; i <= walletCount; i++) {
+        const res = document.getElementById(`result${i}`);
+        if (!res) continue;
+        const ids = JSON.parse(res.dataset.inscriptions || '[]');
+        if (ids.length > 0) {
+          const div = document.createElement('div');
+          div.innerHTML = `<b>Wallet ${i} Inscriptions:</b><br>` + ids.map(id => `<code>${id}</code>`).join('<br>');
+          detailsDiv.appendChild(div);
+        }
+      }
+      detailsDiv.style.display = 'block';
+      document.getElementById('toggleDetails').innerText = 'Hide Details';
+    } else {
+      detailsDiv.style.display = 'none';
+      document.getElementById('toggleDetails').innerText = 'Show Details';
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    fetchTokenData();
+    addWalletInput(true);
+    document.getElementById('addWalletBtn').addEventListener('click', () => addWalletInput());
+    document.getElementById('toggleDetails').addEventListener('click', toggleDetails);
+  });
+</script>
